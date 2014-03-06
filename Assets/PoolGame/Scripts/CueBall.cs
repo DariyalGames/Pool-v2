@@ -14,17 +14,25 @@ public class CueBall : MonoBehaviour
 	public GameObject cue;
 
 	public GUITexture guibar;
+    public Texture whiteBallIcon;
+    public Texture cueMarker;
+    public Vector2 gizmoPos = Vector2.zero;
 
 	public Transform imaginaryCursor;
 	public GameObject shadowPrefab;
 	#endregion
 
 	#region Private Properties
+    private enum ShotTypes { Normal, Stun, Topspin, Backspin, RightEnglish, LeftEnglish }
+    private ShotTypes shotType;
 	private LineRenderer lineRenderer;
 
 	private float mouseDistance = 0.0f;
 	private float cuestr = 0.0f;
-
+    private float maxx = 0.0f;
+    private float maxy = 0.0f;
+    private Vector3 shotDirection;
+    private float shotVelocity;
 	private bool shotTaken = false;
 	private bool movingCue = false;
 
@@ -34,6 +42,7 @@ public class CueBall : MonoBehaviour
 	private float shotTime = 0.1f;
 
 	private Vector3 lastMousePosition;
+    private int noOfCollisions;
 
 	private GameObject shadow;
 	private Vector3 shadowOffset = new Vector3(-0.2f, -0.4f, 0.2f);
@@ -73,9 +82,10 @@ public class CueBall : MonoBehaviour
 				lineRenderer.enabled = false;
 				cue.renderer.enabled = false;
 				cue.transform.localPosition = new Vector3(0.0f, 0.1f, -0.4f);
-				
+
+                shotDirection = transform.forward;
+                noOfCollisions = 0;
 				rigidbody.AddForce(cuestr * transform.forward);
-				//print("shooting");
 				
 				cuestr = 0;
 				audio.PlayOneShot(cuehit);
@@ -107,7 +117,41 @@ public class CueBall : MonoBehaviour
 			if (Input.GetButtonDown("Fire1"))
 			{
 				lastMousePosition = Input.mousePosition;
-				Debug.Log ("[CueBall]: event raise shot power");
+                if (maxx <= 0.04f && maxx >= -0.04f)
+                {
+                    if (maxy <= 0.02f && maxy >= -0.02f)
+                    {
+                        Debug.Log("[CueBall] {NormalShot} zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz6");
+                        shotType = ShotTypes.Normal;
+                    }
+                    else if (maxy > 0.02f)
+                    {
+                        Debug.Log("[CueBall] {topspin} xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+                        shotType = ShotTypes.Topspin;
+                    }
+                    else if (maxy < -0.02f && maxy > -0.08f)
+                    {
+                        Debug.Log("[CueBall] {stun}");
+                        shotType = ShotTypes.Stun;
+                    }
+                    else
+                    {
+                        Debug.Log("[CueBall] {backspin}");
+                        shotType = ShotTypes.Backspin;
+                    }
+                }
+                else if (maxx < -0.04f)
+                {
+                    Debug.Log("[CueBall] {left english}");
+                    shotType = ShotTypes.LeftEnglish;
+                }
+                else
+                {
+                    Debug.Log("[CueBall] {right english}");
+                    shotType = ShotTypes.RightEnglish;
+                }
+
+				//Debug.Log ("[CueBall]: event raise shot power");
 				EventManager.instance.Raise (new PowerSelect());
 			}
 			else 
@@ -125,6 +169,10 @@ public class CueBall : MonoBehaviour
 				lineRenderer.enabled = true;
 				lineRenderer.SetPosition(0, gameObject.transform.position);
 				lineRenderer.SetPosition(1, rayhit.point);
+
+                maxx = Mathf.Clamp(maxx + Input.GetAxis("Horizontal") * 0.1f, -0.32f, 0.32f);
+                maxy = Mathf.Clamp(maxy + Input.GetAxis("Vertical") * 0.1f, -0.32f, 0.16f);
+                //Debug.Log("{CueBall] {maxx,maxy=" + maxx.ToString() + "," + maxy.ToString() + "}");
 			}
 			break;
 		case GameStates.Shooting:
@@ -177,6 +225,7 @@ public class CueBall : MonoBehaviour
 			{
 				whiteReset.renderer.enabled = false;
 				cue.renderer.enabled = true;
+                rigidbody.velocity = Vector3.zero;
 				
 				EventManager.instance.Raise (new RepositionDone());
 			}
@@ -194,6 +243,14 @@ public class CueBall : MonoBehaviour
 	{
 		shadow.transform.position = transform.position + shadowOffset;
 	}
+
+    void OnGUI()
+    {
+        GUI.DrawTexture(new Rect(gizmoPos.x, gizmoPos.y, 50.0f, 50.0f), whiteBallIcon);
+        float markerXPos = gizmoPos.x + 20f + maxx * 50f / 0.64f;
+        float markerYPos = gizmoPos.y + 20f - maxy * 50f / 0.64f;
+        GUI.DrawTexture(new Rect(markerXPos, markerYPos, 10f, 10f), cueMarker);
+    }
 	#endregion
 
 	#region Private Methods
@@ -210,7 +267,7 @@ public class CueBall : MonoBehaviour
 
 	private IEnumerator MoveCue ()
 	{
-		Debug.Log ("[CueBall] moving cue");
+		//Debug.Log ("[CueBall] moving cue");
 		yield return new WaitForSeconds(shotTime);
 		shotTaken = true;
 	}
@@ -220,18 +277,62 @@ public class CueBall : MonoBehaviour
 		yield return new WaitForSeconds(0.3f);
 		cue.renderer.enabled = false;
 	}
+
+    private Vector2 perpendicular(Vector2 input)
+    {
+        float x = Mathf.Sqrt(1/(1+(input.x*input.x)/(input.y*input.y)));
+        return new Vector2(x, x * (-input.x / input.y)); 
+    }
 	#endregion
 
 	#region Event Listeners
 
 	private void OnCollisionEnter(Collision other)
 	{
-		float velocity = Mathf.Max (rigidbody.velocity.x, rigidbody.velocity.z);
+        noOfCollisions++;
+		shotVelocity = Mathf.Max (rigidbody.velocity.x, rigidbody.velocity.z);
 		if(other.gameObject.tag == "ball")
 		{
-			audio.PlayOneShot (impact, velocity * 0.01f);
+			audio.PlayOneShot (impact, shotVelocity * 0.01f);
 		}
-	}
+ 	}
+
+    private void OnCollisionExit(Collision other)
+    {
+        if (noOfCollisions <= 1)
+        {
+            Vector2 perp = perpendicular(new Vector2(shotDirection.x, shotDirection.z));
+            if (other.gameObject.tag == "ball" || other.gameObject.name == "borders")
+            {
+                switch (shotType)
+                {
+                    case ShotTypes.Stun:
+                        rigidbody.velocity = Vector3.zero;
+                        break;
+                    case ShotTypes.Backspin:
+                        rigidbody.velocity = Vector3.zero;
+                        rigidbody.AddForce(-shotDirection * shotVelocity * 10f);
+                        //rigidbody.AddForce(-shotDirection * shotVelocity * 2f * 1.5f);
+                        //shotType = ShotTypes.Normal;
+                        break;
+                    case ShotTypes.Topspin:
+                        //rigidbody.velocity = Vector3.zero;
+                        rigidbody.AddForce(shotDirection * shotVelocity * 10f);
+                        //rigidbody.AddForce(shotDirection * shotVelocity *2f);
+                        //shotType = ShotTypes.Normal;
+                        break;
+                    case ShotTypes.LeftEnglish:
+                        //rigidbody.velocity = Vector3.zero;                   
+                        rigidbody.AddForce(-(new Vector3(perp.x, 0, perp.y)) * shotVelocity * 10f);
+                        break;
+                    case ShotTypes.RightEnglish:
+                        //rigidbody.velocity = Vector3.zero;                  
+                        rigidbody.AddForce((new Vector3(perp.x, 0, perp.y)) * shotVelocity * 10f);
+                        break;
+                }
+            }
+        }
+    }
 
 	private void OnTriggerEnter(Collider other)
 	{
@@ -242,7 +343,7 @@ public class CueBall : MonoBehaviour
 			audio.PlayOneShot (pocket);
 
 			rigidbody.angularVelocity = new Vector3(0f, 0f, 0f);
-			whiteReset.renderer.enabled = true;
+			whiteReset.renderer.enabled = false;
 			cue.renderer.enabled = false;
 
 			EventManager.instance.Raise (new WhiteReposition());
@@ -252,12 +353,14 @@ public class CueBall : MonoBehaviour
 
 	private void OnStateChanged (StateChanged e)
 	{
-		Debug.Log ("[CueBall]: event stat changed");
+		//Debug.Log ("[CueBall]: event stat changed");
 		switch(GameManager.Instance.CurrentState)
 		{
 		case GameStates.TurnStart:
 			cue.renderer.enabled = true;
 			lineRenderer.enabled = true;
+            maxx = 0.0f;
+            maxy = 0.0f;
 			EventManager.instance.Raise (new TurnReady());
 			break;
 		case GameStates.BallMove:
